@@ -1,0 +1,58 @@
+name: Local CI/CD
+
+on:
+  push:
+    branches: [main]
+
+env:
+  IMAGE_NAME: demo-app
+
+jobs:
+  test:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: |
+          . .venv/bin/activate
+          flake8 app.py test_app.py
+
+      - name: Test
+        run: |
+          . .venv/bin/activate
+          python -m pytest
+
+  build:
+    needs: test
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t $IMAGE_NAME:${{ github.sha }} -t $IMAGE_NAME:latest .
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load image into minikube
+        run: minikube image load $IMAGE_NAME:${{ github.sha }}
+
+      - name: Deploy
+        run: |
+          kubectl apply -f k8s/
+          kubectl set image deployment/demo-app demo-app=$IMAGE_NAME:${{ github.sha }}
+          kubectl rollout status deployment/demo-app --timeout=120s
+
+      - name: Smoke test
+        run: |
+          kubectl exec deploy/demo-app -- python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:5000/health').read())"

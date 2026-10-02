@@ -1,61 +1,152 @@
-# name: Local CI/CD
+# # name: Local CI/CD
+# # 
+# # on:
+# #   push:
+# #     branches: [main]
+# # 
+# # env:
+# #   IMAGE_NAME: demo-app
+# # 
+# # jobs:
+# #   test:
+# #     runs-on: self-hosted
+# #     steps:
+# #       - uses: actions/checkout@v4
+# # 
+# #       - name: Install dependencies
+# #         run: |
+# #           python3 -m venv .venv
+# #           . .venv/bin/activate
+# #           pip install -r requirements-dev.txt
+# # 
+# #       - name: Lint
+# #         run: |
+# #           . .venv/bin/activate
+# #           flake8 app.py test_app.py
+# # 
+# #       - name: Test
+# #         run: |
+# #           . .venv/bin/activate
+# #           python -m pytest
+# # 
+# #   build:
+# #     needs: test
+# #     runs-on: self-hosted
+# #     steps:
+# #       - uses: actions/checkout@v4
+# # 
+# #       - name: Build image
+# #         run: docker build -t $IMAGE_NAME:${{ github.sha }} -t $IMAGE_NAME:latest .
+# # 
+# #   deploy:
+# #     needs: build
+# #     runs-on: self-hosted
+# #     steps:
+# #       - uses: actions/checkout@v4
+# # 
+# #       - name: Load image into minikube
+# #         run: minikube image load $IMAGE_NAME:${{ github.sha }}
+# # 
+# #       - name: Deploy
+# #         run: |
+# #           kubectl apply -f k8s/
+# #           kubectl set image deployment/demo-app demo-app=$IMAGE_NAME:${{ github.sha }}
+# #           kubectl rollout status deployment/demo-app --timeout=120s
+# # 
+# #       - name: Smoke test
+# #         run: |
+# #           kubectl exec deploy/demo-app -- python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:5000/health').read())"
+# # 
+# # 
+# # 
+# # 
+# # name: Local CI/CD
+# # 
+# # on:
+# #   push:
+# #     branches: [main]
+# #     paths-ignore:
+# #       - "k8s/**"
+# #       - "argocd/**"
+# # 
+# # env:
+# #   IMAGE_NAME: demo-app
+# # 
+# # jobs:
+# #   test:
+# #     runs-on: self-hosted
+# #     steps:
+# #       - uses: actions/checkout@v4
+# # 
+# #       - name: Install dependencies
+# #         run: |
+# #           python3 -m venv .venv
+# #           . .venv/bin/activate
+# #           pip install -r requirements-dev.txt
+# # 
+# #       - name: Lint
+# #         run: |
+# #           . .venv/bin/activate
+# #           flake8 app.py test_app.py
+# # 
+# #       - name: Test
+# #         run: |
+# #           . .venv/bin/activate
+# #           python -m pytest
+# # 
+# #   build:
+# #     needs: test
+# #     runs-on: self-hosted
+# #     steps:
+# #       - uses: actions/checkout@v4
+# # 
+# #       - name: Build image
+# #         run: docker build -t $IMAGE_NAME:${{ github.sha }} .
+# # 
+# #       - name: Load image into minikube
+# #         run: minikube image load $IMAGE_NAME:${{ github.sha }}
+# # 
+# #   update-manifest:
+# #     needs: build
+# #     runs-on: self-hosted
+# #     permissions:
+# #       contents: write
+# #     steps:
+# #       - uses: actions/checkout@v4
+# # 
+# #       - name: Commit new image tag
+# #         run: |
+# #           sed -i "s|image: demo-app:.*|image: demo-app:${{ github.sha }}|" k8s/deployment.yaml
+# #           git config user.name "github-actions"
+# #           git config user.email "github-actions@users.noreply.github.com"
+# #           git add k8s/deployment.yaml
+# #           git diff --cached --quiet || (git commit -m "Deploy ${{ github.sha }}" && git push)
+# # 
+# #   verify:
+# #     needs: update-manifest
+# #     runs-on: self-hosted
+# #     steps:
+# #       - name: Ask Argo CD to refresh now
+# #         run: kubectl -n argocd annotate application demo-app argocd.argoproj.io/refresh=hard --overwrite
+# # 
+# #       - name: Wait for the new image to be deployed
+# #         run: |
+# #           for i in $(seq 1 36); do
+# #             img=$(kubectl get deploy demo-app -o jsonpath='{.spec.template.spec.containers[0].image}')
+# #             [ "$img" = "demo-app:${{ github.sha }}" ] && exit 0
+# #             sleep 5
+# #           done
+# #           echo "Argo CD did not deploy the new image in time"; exit 1
+# # 
+# #       - name: Wait for rollout
+# #         run: kubectl rollout status deployment/demo-app --timeout=120s
+# # 
+# #       - name: Smoke test
+# #         run: |
+# #           kubectl exec deploy/demo-app -- python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:5000/health').read())"
+# # 
+# # 
 # 
-# on:
-#   push:
-#     branches: [main]
-# 
-# env:
-#   IMAGE_NAME: demo-app
-# 
-# jobs:
-#   test:
-#     runs-on: self-hosted
-#     steps:
-#       - uses: actions/checkout@v4
-# 
-#       - name: Install dependencies
-#         run: |
-#           python3 -m venv .venv
-#           . .venv/bin/activate
-#           pip install -r requirements-dev.txt
-# 
-#       - name: Lint
-#         run: |
-#           . .venv/bin/activate
-#           flake8 app.py test_app.py
-# 
-#       - name: Test
-#         run: |
-#           . .venv/bin/activate
-#           python -m pytest
-# 
-#   build:
-#     needs: test
-#     runs-on: self-hosted
-#     steps:
-#       - uses: actions/checkout@v4
-# 
-#       - name: Build image
-#         run: docker build -t $IMAGE_NAME:${{ github.sha }} -t $IMAGE_NAME:latest .
-# 
-#   deploy:
-#     needs: build
-#     runs-on: self-hosted
-#     steps:
-#       - uses: actions/checkout@v4
-# 
-#       - name: Load image into minikube
-#         run: minikube image load $IMAGE_NAME:${{ github.sha }}
-# 
-#       - name: Deploy
-#         run: |
-#           kubectl apply -f k8s/
-#           kubectl set image deployment/demo-app demo-app=$IMAGE_NAME:${{ github.sha }}
-#           kubectl rollout status deployment/demo-app --timeout=120s
-# 
-#       - name: Smoke test
-#         run: |
-#           kubectl exec deploy/demo-app -- python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:5000/health').read())"
 # 
 # 
 # 
@@ -101,13 +192,50 @@
 #       - uses: actions/checkout@v4
 # 
 #       - name: Build image
-#         run: docker build -t $IMAGE_NAME:${{ github.sha }} .
+#         run: docker build --pull -t $IMAGE_NAME:${{ github.sha }} .
 # 
+#   security:
+#     needs: build
+#     runs-on: self-hosted
+#     steps:
+#       - uses: actions/checkout@v4
+# 
+#       - name: Prepare Trivy cache
+#         run: mkdir -p $HOME/.cache/trivy
+# 
+#       - name: Secret scan (Gitleaks)
+#         run: |
+#           docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest detect --source /repo --no-git --verbose --redact
+# 
+#       - name: SAST (Bandit)
+#         run: |
+#           python3 -m venv .venv
+#           . .venv/bin/activate
+#           pip install -r requirements-dev.txt
+#           bandit -r app.py -ll
+# 
+#       - name: Dependency audit (pip-audit)
+#         run: |
+#           . .venv/bin/activate
+#           pip-audit -r requirements.txt
+# 
+#       - name: Config and dependency scan (Trivy)
+#         run: |
+#           docker run --rm -v "$PWD:/src" -v "$HOME/.cache/trivy:/root/.cache/" aquasec/trivy:latest fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --skip-dirs /src/.venv /src
+# 
+#       - name: Scan image (Trivy)
+#         run: |
+#           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/" aquasec/trivy:latest image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 $IMAGE_NAME:${{ github.sha }}
+# 
+#   load-image:
+#     needs: security
+#     runs-on: self-hosted
+#     steps:
 #       - name: Load image into minikube
 #         run: minikube image load $IMAGE_NAME:${{ github.sha }}
 # 
 #   update-manifest:
-#     needs: build
+#     needs: load-image
 #     runs-on: self-hosted
 #     permissions:
 #       contents: write
@@ -144,8 +272,8 @@
 #       - name: Smoke test
 #         run: |
 #           kubectl exec deploy/demo-app -- python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:5000/health').read())"
-# 
-# 
+
+
 
 
 
@@ -192,50 +320,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build image
-        run: docker build --pull -t $IMAGE_NAME:${{ github.sha }} .
+        run: docker build -t $IMAGE_NAME:${{ github.sha }} .
 
-  security:
-    needs: build
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Prepare Trivy cache
-        run: mkdir -p $HOME/.cache/trivy
-
-      - name: Secret scan (Gitleaks)
-        run: |
-          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest detect --source /repo --no-git --verbose --redact
-
-      - name: SAST (Bandit)
-        run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
-          pip install -r requirements-dev.txt
-          bandit -r app.py -ll
-
-      - name: Dependency audit (pip-audit)
-        run: |
-          . .venv/bin/activate
-          pip-audit -r requirements.txt
-
-      - name: Config and dependency scan (Trivy)
-        run: |
-          docker run --rm -v "$PWD:/src" -v "$HOME/.cache/trivy:/root/.cache/" aquasec/trivy:latest fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --skip-dirs /src/.venv /src
-
-      - name: Scan image (Trivy)
-        run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/" aquasec/trivy:latest image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 $IMAGE_NAME:${{ github.sha }}
-
-  load-image:
-    needs: security
-    runs-on: self-hosted
-    steps:
       - name: Load image into minikube
         run: minikube image load $IMAGE_NAME:${{ github.sha }}
 
   update-manifest:
-    needs: load-image
+    needs: build
     runs-on: self-hosted
     permissions:
       contents: write

@@ -12,6 +12,8 @@ spec:
       labels:
         app: demo-app
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull
       containers:
         - name: demo-app
           image: ghcr.io/micmichael246/demo-app:14946d7b84ea060d54e4954967c690d1c9220b69

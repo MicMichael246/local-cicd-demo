@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: demo-app
-          image: demo-app:3ac8ad40336b6a52e4f489b087323af59e091ee2
+          image: ghcr.io/micmichael246/demo-app:14946d7b84ea060d54e4954967c690d1c9220b69
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5000

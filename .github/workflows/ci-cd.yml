@@ -6,12 +6,15 @@ on:
     paths-ignore:
       - "k8s/**"
       - "argocd/**"
+      - "*.md"
 
 permissions:
   contents: read
 
 env:
-  IMAGE_NAME: demo-app
+  IMAGE_NAME: ghcr.io/micmichael246/demo-app
+  PIP_DEFAULT_TIMEOUT: "100"
+  PIP_RETRIES: "10"
 
 jobs:
   test:
@@ -68,6 +71,9 @@ jobs:
   build:
     needs: [test, security]
     runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -79,7 +85,7 @@ jobs:
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$HOME/.cache/trivy:/root/.cache/" \
-            aquasec/trivy:latest image \
+            aquasec/trivy:latest image --skip-db-update \
             --severity CRITICAL --exit-code 1 --ignore-unfixed \
             $IMAGE_NAME:${{ github.sha }}
 
@@ -88,11 +94,20 @@ jobs:
           docker run --rm \
             -v "$PWD:/src" \
             -v "$HOME/.cache/trivy:/root/.cache/" \
-            aquasec/trivy:latest config \
+            aquasec/trivy:latest config --skip-check-update \
             --severity HIGH,CRITICAL --exit-code 0 /src
 
-      - name: Load image into minikube
-        run: minikube image load $IMAGE_NAME:${{ github.sha }}
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Push image to GHCR
+        run: docker push $IMAGE_NAME:${{ github.sha }}
+
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io
 
   update-manifest:
     needs: build
@@ -104,7 +119,7 @@ jobs:
 
       - name: Commit new image tag
         run: |
-          sed -i "s|image: demo-app:.*|image: demo-app:${{ github.sha }}|" k8s/deployment.yaml
+          sed -i "s|^\( *image: \).*|\1${IMAGE_NAME}:${{ github.sha }}|" k8s/deployment.yaml
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
           git add k8s/deployment.yaml
@@ -119,15 +134,15 @@ jobs:
 
       - name: Wait for the new image to be deployed
         run: |
-          for i in $(seq 1 36); do
+          for i in $(seq 1 60); do
             img=$(kubectl get deploy demo-app -o jsonpath='{.spec.template.spec.containers[0].image}')
-            [ "$img" = "demo-app:${{ github.sha }}" ] && exit 0
+            [ "$img" = "$IMAGE_NAME:${{ github.sha }}" ] && exit 0
             sleep 5
           done
           echo "Argo CD did not deploy the new image in time"; exit 1
 
       - name: Wait for rollout
-        run: kubectl rollout status deployment/demo-app --timeout=120s
+        run: kubectl rollout status deployment/demo-app --timeout=300s
 
       - name: Smoke test
         run: |

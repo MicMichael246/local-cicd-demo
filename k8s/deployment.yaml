@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: demo-app
-          image: demo-app:d86cfa687ace08e24288cdbcc2f3cc87fa2d973a
+          image: demo-app:bbab3be387a0d5cc32cf0f5b85637729a3e41a6b
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5000

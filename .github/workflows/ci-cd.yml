@@ -363,3 +363,5 @@ jobs:
       - name: Smoke test
         run: |
           kubectl exec deploy/demo-app -- python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:5000/health').read())"
+      - name: Clean up old images
+        run: docker image prune -af --filter "until=24h"

@@ -14,12 +14,32 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: demo-app
           image: ghcr.io/micmichael246/demo-app:14946d7b84ea060d54e4954967c690d1c9220b69
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5000
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
             
 ---
 apiVersion: v1

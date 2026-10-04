@@ -89,13 +89,13 @@ jobs:
             --severity CRITICAL --exit-code 1 --ignore-unfixed \
             $IMAGE_NAME:${{ github.sha }}
 
-      - name: Scan Dockerfile and manifests (Trivy, report only)
+      - name: Scan Dockerfile and manifests (Trivy)
         run: |
           docker run --rm \
             -v "$PWD:/src" \
             -v "$HOME/.cache/trivy:/root/.cache/" \
             aquasec/trivy:latest config --skip-check-update \
-            --severity HIGH,CRITICAL --exit-code 0 /src
+            --severity HIGH,CRITICAL --exit-code 1 /src
 
       - name: Log in to GHCR
         env:

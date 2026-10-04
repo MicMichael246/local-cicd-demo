@@ -15,12 +15,14 @@ env:
   IMAGE_NAME: ghcr.io/micmichael246/demo-app
   PIP_DEFAULT_TIMEOUT: "100"
   PIP_RETRIES: "10"
+  TRIVY_IMAGE: aquasec/trivy@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+  GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
 
 jobs:
   test:
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install dependencies
         run: |
@@ -41,7 +43,7 @@ jobs:
   security:
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -50,13 +52,13 @@ jobs:
           docker run --rm \
             -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
             -v "$PWD:/repo" \
-            ghcr.io/gitleaks/gitleaks:latest detect --source /repo --redact --no-banner
+            $GITLEAKS_IMAGE detect --source /repo --redact --no-banner
 
       - name: Install security tools
         run: |
           python3 -m venv .venv-sec
           . .venv-sec/bin/activate
-          pip install bandit pip-audit
+          pip install bandit==1.9.4 pip-audit==2.10.1
 
       - name: Code scan (Bandit)
         run: |
@@ -75,7 +77,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Build image
         run: docker build -t $IMAGE_NAME:${{ github.sha }} .
@@ -85,7 +87,7 @@ jobs:
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$HOME/.cache/trivy:/root/.cache/" \
-            aquasec/trivy:latest image --skip-db-update \
+            $TRIVY_IMAGE image --skip-db-update \
             --severity CRITICAL --exit-code 1 --ignore-unfixed \
             $IMAGE_NAME:${{ github.sha }}
 
@@ -94,8 +96,24 @@ jobs:
           docker run --rm \
             -v "$PWD:/src" \
             -v "$HOME/.cache/trivy:/root/.cache/" \
-            aquasec/trivy:latest config --skip-check-update \
+            $TRIVY_IMAGE config --skip-check-update \
             --severity HIGH,CRITICAL --exit-code 1 /src
+
+      - name: Generate SBOM (Trivy, CycloneDX)
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$HOME/.cache/trivy:/root/.cache/" \
+            -v "$PWD:/out" \
+            $TRIVY_IMAGE image --skip-db-update --format cyclonedx \
+            --output /out/sbom.cdx.json $IMAGE_NAME:${{ github.sha }}
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.cdx.json
+          retention-days: 30
 
       - name: Log in to GHCR
         env:
@@ -115,7 +133,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Commit new image tag
         run: |

@@ -164,4 +164,18 @@ jobs:
 
       - name: Smoke test
         run: |
-          kubectl exec deploy/demo-app -- python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:5000/health').read())"
+          POD=""
+          for i in $(seq 1 30); do
+            POD=$(kubectl get pods -l app=demo-app -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.containers[0].image}{" "}{.metadata.deletionTimestamp}{"\n"}{end}' | awk -v img="$IMAGE_NAME:${{ github.sha }}" 'NF==2 && $2==img {print $1; exit}')
+            [ -n "$POD" ] && break
+            sleep 2
+          done
+          [ -n "$POD" ] || { echo "No running pod with the new image"; exit 1; }
+          echo "Smoke testing $POD"
+          for i in $(seq 1 15); do
+            kubectl exec "$POD" -- python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:5000/health', timeout=3).read())" && exit 0
+            sleep 3
+          done
+          echo "Smoke test failed"
+          kubectl logs "$POD" --tail=30
+          exit 1

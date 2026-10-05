@@ -122,7 +122,14 @@ jobs:
         run: echo "$GH_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Push image to GHCR
-        run: docker push $IMAGE_NAME:${{ github.sha }}
+        run: |
+          for i in 1 2 3 4 5; do
+            echo "Push attempt $i"
+            docker push --quiet $IMAGE_NAME:${{ github.sha }} && exit 0
+            sleep 10
+          done
+          echo "Push failed after 5 attempts"
+          exit 1
 
       - name: Resolve pushed image digest
         id: digest
@@ -142,7 +149,7 @@ jobs:
             docker run --rm -u "$(id -u):$(id -g)" \
               -e HOME=/tmp -e DOCKER_CONFIG=/dockercfg -v "$HOME/.docker:/dockercfg:ro" \
               -e COSIGN_PRIVATE_KEY -e COSIGN_PASSWORD \
-              $COSIGN_IMAGE sign --yes --key env://COSIGN_PRIVATE_KEY --tlog-upload=false \
+              $COSIGN_IMAGE sign --yes --key env://COSIGN_PRIVATE_KEY --use-signing-config=false --tlog-upload=false \
               "$IMAGE_NAME@${{ steps.digest.outputs.digest }}" && exit 0
             sleep 10
           done
@@ -159,7 +166,7 @@ jobs:
               -e HOME=/tmp -e DOCKER_CONFIG=/dockercfg -v "$HOME/.docker:/dockercfg:ro" \
               -v "$PWD/sbom.cdx.json:/sbom.cdx.json:ro" \
               -e COSIGN_PRIVATE_KEY -e COSIGN_PASSWORD \
-              $COSIGN_IMAGE attest --yes --key env://COSIGN_PRIVATE_KEY --tlog-upload=false \
+              $COSIGN_IMAGE attest --yes --key env://COSIGN_PRIVATE_KEY --use-signing-config=false --tlog-upload=false \
               --type cyclonedx --predicate /sbom.cdx.json \
               "$IMAGE_NAME@${{ steps.digest.outputs.digest }}" && exit 0
             sleep 10

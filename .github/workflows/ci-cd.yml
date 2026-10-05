@@ -16,6 +16,7 @@ env:
   PIP_DEFAULT_TIMEOUT: "100"
   PIP_RETRIES: "10"
   TRIVY_IMAGE: aquasec/trivy@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+  COSIGN_IMAGE: ghcr.io/sigstore/cosign/cosign@sha256:d91bc4e7e95e8d2f549c747a72dc174f90579e410a1695f57f686674f84ce849
   GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
 
 jobs:
@@ -122,6 +123,61 @@ jobs:
 
       - name: Push image to GHCR
         run: docker push $IMAGE_NAME:${{ github.sha }}
+
+      - name: Resolve pushed image digest
+        id: digest
+        run: |
+          DIGEST=$(docker buildx imagetools inspect "$IMAGE_NAME:${{ github.sha }}" | awk '/^Digest:/ {print $2; exit}')
+          echo "Digest: $DIGEST"
+          echo "$DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Sign image (cosign, key-based)
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          for i in 1 2 3; do
+            echo "Sign attempt $i"
+            docker run --rm -u "$(id -u):$(id -g)" \
+              -e HOME=/tmp -e DOCKER_CONFIG=/dockercfg -v "$HOME/.docker:/dockercfg:ro" \
+              -e COSIGN_PRIVATE_KEY -e COSIGN_PASSWORD \
+              $COSIGN_IMAGE sign --yes --key env://COSIGN_PRIVATE_KEY --tlog-upload=false \
+              "$IMAGE_NAME@${{ steps.digest.outputs.digest }}" && exit 0
+            sleep 10
+          done
+          exit 1
+
+      - name: Attach SBOM as signed attestation
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          for i in 1 2 3; do
+            echo "Attest attempt $i"
+            docker run --rm -u "$(id -u):$(id -g)" \
+              -e HOME=/tmp -e DOCKER_CONFIG=/dockercfg -v "$HOME/.docker:/dockercfg:ro" \
+              -v "$PWD/sbom.cdx.json:/sbom.cdx.json:ro" \
+              -e COSIGN_PRIVATE_KEY -e COSIGN_PASSWORD \
+              $COSIGN_IMAGE attest --yes --key env://COSIGN_PRIVATE_KEY --tlog-upload=false \
+              --type cyclonedx --predicate /sbom.cdx.json \
+              "$IMAGE_NAME@${{ steps.digest.outputs.digest }}" && exit 0
+            sleep 10
+          done
+          exit 1
+
+      - name: Verify signature and attestation
+        run: |
+          docker run --rm -u "$(id -u):$(id -g)" \
+            -e HOME=/tmp -e DOCKER_CONFIG=/dockercfg -v "$HOME/.docker:/dockercfg:ro" \
+            -v "$PWD/cosign.pub:/cosign.pub:ro" \
+            $COSIGN_IMAGE verify --key /cosign.pub --insecure-ignore-tlog=true \
+            "$IMAGE_NAME@${{ steps.digest.outputs.digest }}" > /dev/null
+          docker run --rm -u "$(id -u):$(id -g)" \
+            -e HOME=/tmp -e DOCKER_CONFIG=/dockercfg -v "$HOME/.docker:/dockercfg:ro" \
+            -v "$PWD/cosign.pub:/cosign.pub:ro" \
+            $COSIGN_IMAGE verify-attestation --key /cosign.pub --insecure-ignore-tlog=true \
+            --type cyclonedx "$IMAGE_NAME@${{ steps.digest.outputs.digest }}" > /dev/null
 
       - name: Log out of GHCR
         if: always()

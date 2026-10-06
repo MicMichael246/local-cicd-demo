@@ -1,0 +1,38 @@
+apiVersion: policies.kyverno.io/v1
+kind: NamespacedImageValidatingPolicy
+metadata:
+  name: require-signed-demo-app
+  namespace: default
+spec:
+  webhookConfiguration:
+    timeoutSeconds: 30
+  evaluation:
+    background:
+      enabled: false
+  credentials:
+    secrets:
+      - ghcr-pull
+  validationActions: [Deny]
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ['']
+        apiVersions: ['v1']
+        operations: ['CREATE', 'UPDATE']
+        resources: ['pods']
+  matchImageReferences:
+    - glob: 'ghcr.io/micmichael246/demo-app*'
+  attestors:
+    - name: cosign
+      cosign:
+        key:
+          data: |
+            -----BEGIN PUBLIC KEY-----
+            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+nusKP3FJ6TWzZLP62kjBaCYdO2i
+            yeTsZ7JT4Smeiaw9hpBfTgBMKgOL1rrith/CdQXeUThYR5bAqrFoYzr+Fg==
+            -----END PUBLIC KEY-----
+        ctlog:
+          insecureIgnoreTlog: true
+  validations:
+    - expression: >-
+        images.containers.map(image, verifyImageSignatures(image, [attestors.cosign])).all(e, e > 0)
+      message: 'demo-app images must be signed by the pipeline key'

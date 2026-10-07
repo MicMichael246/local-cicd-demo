@@ -21,6 +21,7 @@ permissions:
 
 env:
   IMAGE_NAME: ghcr.io/micmichael246/demo-app
+  ZAP_IMAGE: ghcr.io/zaproxy/zaproxy@sha256:781a2bdaea47324e7bab583e2263f21d257b0aee61ed51521a5be45f5f5081ef
   PIP_DEFAULT_TIMEOUT: "100"
   PIP_RETRIES: "10"
   TRIVY_IMAGE: aquasec/trivy@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
@@ -126,6 +127,46 @@ jobs:
           name: sbom-${{ github.sha }}
           path: sbom.cdx.json
           retention-days: 30
+
+      - name: DAST - start the built image
+        run: |
+          NET=zapnet-$GITHUB_RUN_ID
+          APP=zap-target-$GITHUB_RUN_ID
+          docker network create "$NET"
+          docker run -d --name "$APP" --network "$NET" --read-only --cap-drop ALL \
+            --security-opt no-new-privileges "$IMAGE_NAME:${{ github.sha }}"
+          for i in $(seq 1 30); do
+            docker exec "$APP" python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')" && exit 0
+            sleep 2
+          done
+          docker logs "$APP"
+          exit 1
+
+      - name: DAST - OWASP ZAP baseline scan
+        run: |
+          NET=zapnet-$GITHUB_RUN_ID
+          APP=zap-target-$GITHUB_RUN_ID
+          mkdir -p zap-out
+          chmod a+w zap-out
+          cp zap-rules.conf zap-out/
+          docker run --rm --network "$NET" -v "$PWD/zap-out:/zap/wrk:rw" \
+            $ZAP_IMAGE zap-baseline.py -t "http://$APP:5000" -m 1 -c zap-rules.conf \
+            -r report.html -w report.md -J report.json
+
+      - name: DAST - upload report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: zap-report-${{ github.sha }}
+          path: zap-out/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: DAST - cleanup
+        if: always()
+        run: |
+          docker rm -f "zap-target-$GITHUB_RUN_ID" || true
+          docker network rm "zapnet-$GITHUB_RUN_ID" || true
 
       - name: Log in to GHCR
         if: github.event_name == 'push'

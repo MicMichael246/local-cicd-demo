@@ -2,3 +2,4 @@
 __pycache__/
 actions-runner/
 cosign.key
+zap-out/

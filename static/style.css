@@ -1,0 +1,9 @@
+  body { margin: 0; background: #111; color: #eee; font-family: system-ui, sans-serif;
+         display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+  .wrap { display: flex; gap: 24px; align-items: flex-start; }
+  canvas { background: #000; border: 2px solid #444; }
+  .side { width: 160px; }
+  h1 { margin: 0 0 12px; font-size: 28px; }
+  .stat { margin: 10px 0; font-size: 18px; }
+  .help { margin-top: 20px; font-size: 13px; color: #aaa; line-height: 1.7; }
+  button { margin-top: 12px; padding: 8px 14px; font-size: 14px; cursor: pointer; }

@@ -8,6 +8,13 @@ on:
       - "k8s/**"
       - "argocd/**"
       - "*.md"
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "platform/**"
+      - "k8s/**"
+      - "argocd/**"
+      - "*.md"
 
 permissions:
   contents: read
@@ -23,6 +30,7 @@ env:
 jobs:
   test:
     runs-on: self-hosted
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -44,6 +52,7 @@ jobs:
 
   security:
     runs-on: self-hosted
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -75,6 +84,7 @@ jobs:
   build:
     needs: [test, security]
     runs-on: self-hosted
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
       packages: write
@@ -118,6 +128,7 @@ jobs:
           retention-days: 30
 
       - name: Log in to GHCR
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -129,6 +140,7 @@ jobs:
           exit 1
 
       - name: Push image to GHCR
+        if: github.event_name == 'push'
         run: |
           for i in 1 2 3 4 5; do
             echo "Push attempt $i"
@@ -139,6 +151,7 @@ jobs:
           exit 1
 
       - name: Resolve pushed image digest
+        if: github.event_name == 'push'
         id: digest
         run: |
           DIGEST=$(docker buildx imagetools inspect "$IMAGE_NAME:${{ github.sha }}" | awk '/^Digest:/ {print $2; exit}')
@@ -147,6 +160,7 @@ jobs:
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Sign image (cosign, key-based)
+        if: github.event_name == 'push'
         env:
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
@@ -163,6 +177,7 @@ jobs:
           exit 1
 
       - name: Attach SBOM as signed attestation
+        if: github.event_name == 'push'
         env:
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
@@ -181,6 +196,7 @@ jobs:
           exit 1
 
       - name: Verify signature and attestation
+        if: github.event_name == 'push'
         run: |
           docker run --rm -u "$(id -u):$(id -g)" \
             -e HOME=/tmp -e DOCKER_CONFIG=/dockercfg -v "$HOME/.docker:/dockercfg:ro" \
@@ -200,6 +216,7 @@ jobs:
   update-manifest:
     needs: build
     runs-on: self-hosted
+    if: github.event_name == 'push'
     permissions:
       contents: write
     steps:
@@ -216,6 +233,7 @@ jobs:
   verify:
     needs: update-manifest
     runs-on: self-hosted
+    if: github.event_name == 'push'
     steps:
       - name: Ask Argo CD to refresh now
         run: kubectl -n argocd annotate application demo-app argocd.argoproj.io/refresh=hard --overwrite

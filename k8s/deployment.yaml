@@ -22,7 +22,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: demo-app
-          image: ghcr.io/micmichael246/demo-app:d158b0ae035cbf780d6394ac44004374b6950fb8
+          image: ghcr.io/micmichael246/demo-app:2cb0c4376d6dbb8ed28d3cd6406533863add7420
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5000

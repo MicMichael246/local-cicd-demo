@@ -1,0 +1,52 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: demo-app-alerts
+  labels:
+    app: demo-app
+spec:
+  groups:
+    - name: demo-app.rules
+      rules:
+        - alert: DemoAppDown
+          expr: absent(up{job="demo-app"} == 1)
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "demo-app is down"
+            description: "No healthy demo-app target has been scraped for 2 minutes."
+        - alert: DemoAppNoAvailableReplicas
+          expr: kube_deployment_status_replicas_available{namespace="default",deployment="demo-app"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "demo-app has no available replicas"
+            description: "The demo-app Deployment has had zero available replicas for 2 minutes."
+        - alert: DemoAppHighErrorRate
+          expr: |
+            sum(rate(flask_http_request_total{job="demo-app",status=~"5.."}[5m]))
+              / sum(rate(flask_http_request_total{job="demo-app"}[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "demo-app is returning many 5xx errors"
+            description: "More than 5% of requests failed over the last 5 minutes."
+        - alert: DemoAppHighLatency
+          expr: histogram_quantile(0.95, sum by (le) (rate(flask_http_request_duration_seconds_bucket{job="demo-app"}[5m]))) > 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "demo-app p95 latency is above 1s"
+            description: "The 95th percentile request latency has been above one second for 10 minutes."
+        - alert: DemoAppPodRestarting
+          expr: increase(kube_pod_container_status_restarts_total{namespace="default",pod=~"demo-app-.*"}[30m]) > 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "demo-app is restarting repeatedly"
+            description: "A demo-app container restarted more than twice in 30 minutes."

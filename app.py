@@ -1,6 +1,9 @@
 from flask import Flask, send_from_directory
+from prometheus_flask_exporter import PrometheusMetrics
 
 app = Flask(__name__, static_folder="static")
+metrics = PrometheusMetrics(app)
+metrics.info("app_info", "Application info", version="1.0.0")
 
 
 @app.route("/")

@@ -27,3 +27,11 @@ def test_static_assets():
     for path in ("/static/style.css", "/static/tetris.js"):
         with client.get(path) as response:
             assert response.status_code == 200
+
+
+def test_metrics_endpoint():
+    client = app.test_client()
+    client.get("/health")
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert b"flask_http_request_total" in response.data

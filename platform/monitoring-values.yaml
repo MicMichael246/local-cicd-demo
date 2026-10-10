@@ -63,10 +63,23 @@ alertmanager:
       routes:
         - receiver: 'null'
           matchers: ['alertname =~ "Watchdog|InfoInhibitor"']
+        - receiver: telegram
+          matchers: ['severity =~ "warning|critical"']
+          continue: true
         - receiver: slack-warnings
           matchers: ['severity = "warning"']
     receivers:
       - name: 'null'
+      - name: telegram
+        telegram_configs:
+          - bot_token_file: /etc/alertmanager/secrets/alertmanager-notifications/telegram-bot-token
+            chat_id_file: /etc/alertmanager/secrets/alertmanager-notifications/telegram-chat-id
+            send_resolved: true
+            parse_mode: HTML
+            message: |-
+              {{ if eq .Status "resolved" }}✅ <b>RESOLVED</b>{{ else if eq .CommonLabels.severity "critical" }}🔴 <b>CRITICAL</b>{{ else }}🟡 <b>WARNING</b>{{ end }}: {{ .CommonLabels.alertname | html }}
+              {{ range .Alerts }}• {{ .Annotations.summary | html }}{{ if .Annotations.description }}: {{ .Annotations.description | html }}{{ end }}
+              {{ end }}
       - name: slack-warnings
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/alertmanager-notifications/slack-webhook-url
